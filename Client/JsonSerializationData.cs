@@ -2,7 +2,7 @@
 
 namespace Client;
 
-internal class JsonSerializationData
+internal static class JsonSerializationData
 {
     public static readonly JsonSerializerOptions IndentedSerializationOptions = new() { WriteIndented = true };
 }

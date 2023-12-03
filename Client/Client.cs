@@ -1,4 +1,5 @@
-﻿using System.Net.Sockets;
+﻿using System.Net;
+using System.Net.Sockets;
 using System.Text.Json;
 
 using Client;
@@ -8,7 +9,7 @@ using Utility;
 try
 {
     const int minMatrixSize = 1000;
-    const int maxMatrixSize = 10000;
+    const int maxMatrixSize = 2000;
 
     var n = Generator.GenerateInt32(minMatrixSize, maxMatrixSize);
     var m = Generator.GenerateInt32(minMatrixSize, maxMatrixSize);
@@ -17,21 +18,29 @@ try
     var m1 = Generator.GenerateMatrix(n, m);
     var m2 = Generator.GenerateMatrix(m, l);
 
-    var transferObject = new RequestObject(n, m, l, m1, m2);
+    var transferObject = new MultiplicationData(n, m, l, m1, m2);
 
     var json = JsonSerializer.Serialize(transferObject);
 
     using var client = new TcpClient();
-    await client.ConnectAsync(Data.IpAddress, Data.Port);
+
+    var remoteIp = new IPEndPoint(Data.IpAddress, Data.Port);
+
+    Console.WriteLine($"Connecting to {remoteIp}...");
+    await client.ConnectAsync(remoteIp);
+    Console.WriteLine($"Connected to {remoteIp}.");
 
     await using var stream = client.GetStream();
-
     await using var writer = new StreamWriter(stream);
+    using var reader = new StreamReader(stream);
+
     await writer.WriteLineAsync(json);
     await writer.FlushAsync();
+    Console.WriteLine($"Sent two matrices of sizes {n}*{m} and {m}*{l} to server.");
 
-    using var reader = new StreamReader(stream);
+    Console.WriteLine("Waiting for response from server...");
     var responseJson = await reader.ReadLineAsync();
+    Console.WriteLine("Received response from server.");
 
     if (responseJson == null)
     {
@@ -47,7 +56,7 @@ try
     }
     else if (responseObject.Error != null)
     {
-        Console.WriteLine($"An error occurred while computing: {responseObject.Error}");
+        Console.WriteLine($"Received error message from server: {responseObject.Error}");
     }
     else
     {
@@ -55,11 +64,17 @@ try
             responseObject.Result,
             JsonSerializationData.IndentedSerializationOptions);
 
-        Console.WriteLine("Result matrix is:");
-        Console.WriteLine(matrixJson);
+        Console.WriteLine("Saving result to 'result.txt'...");
+        File.WriteAllText("result.txt", matrixJson);
+        Console.WriteLine("Result saved to 'result.txt'.");
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"An exception occurred: {ex.Message}");
+    Console.WriteLine($"A fatal exception occurred: {ex.Message}");
+}
+finally
+{
+    Console.Write("Press any key to close this window...");
+    Console.Read();
 }

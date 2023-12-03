@@ -20,6 +20,7 @@ internal static class Generator
                 matrix[i][j] = Rand.NextDouble();
             }
         }
+
         return matrix;
     }
 }
