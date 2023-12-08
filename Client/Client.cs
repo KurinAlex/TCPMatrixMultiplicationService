@@ -11,12 +11,15 @@ try
     const int minMatrixSize = 1000;
     const int maxMatrixSize = 2000;
 
+    const double numbersMinValue = -1000;
+    const double numbersMaxValue = 1000;
+
     var n = Generator.GenerateInt32(minMatrixSize, maxMatrixSize);
     var m = Generator.GenerateInt32(minMatrixSize, maxMatrixSize);
     var l = Generator.GenerateInt32(minMatrixSize, maxMatrixSize);
 
-    var m1 = Generator.GenerateMatrix(n, m);
-    var m2 = Generator.GenerateMatrix(m, l);
+    var m1 = Generator.GenerateMatrix(n, m, numbersMinValue, numbersMaxValue);
+    var m2 = Generator.GenerateMatrix(m, l, numbersMinValue, numbersMaxValue);
 
     var transferObject = new MultiplicationData(n, m, l, m1, m2);
 
@@ -34,6 +37,7 @@ try
     await using var writer = new StreamWriter(stream);
     using var reader = new StreamReader(stream);
 
+    Console.WriteLine("Sending data to server...");
     await writer.WriteLineAsync(json);
     await writer.FlushAsync();
     Console.WriteLine($"Sent two matrices of sizes {n}*{m} and {m}*{l} to server.");
@@ -44,7 +48,7 @@ try
 
     if (responseJson == null)
     {
-        Console.WriteLine("Error while reading response.");
+        Console.WriteLine("Error occurred while reading response.");
         return;
     }
 
@@ -64,14 +68,21 @@ try
             responseObject.Result,
             JsonSerializationData.IndentedSerializationOptions);
 
-        Console.WriteLine("Saving result to 'result.txt'...");
-        File.WriteAllText("result.txt", matrixJson);
-        Console.WriteLine("Result saved to 'result.txt'.");
+        var resultFileName = $"{Guid.NewGuid()}.txt";
+
+        Console.WriteLine($"Saving result to '{resultFileName}'...");
+        File.WriteAllText(resultFileName, matrixJson);
+        Console.WriteLine($"Result saved to '{resultFileName}'.");
+
+        Console.Write("Press any key to write response to console...");
+        Console.Read();
+
+        Console.Write(matrixJson);
     }
 }
 catch (Exception ex)
 {
-    Console.WriteLine($"A fatal exception occurred: {ex.Message}");
+    Console.WriteLine($"A fatal error occurred: {ex.Message}");
 }
 finally
 {

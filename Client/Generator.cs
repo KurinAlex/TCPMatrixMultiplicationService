@@ -9,7 +9,7 @@ internal static class Generator
         return Rand.Next(min, max);
     }
 
-    public static double[][] GenerateMatrix(int rows, int cols)
+    public static double[][] GenerateMatrix(int rows, int cols, double min, double max)
     {
         var matrix = new double[rows][];
         for (var i = 0; i < rows; i++)
@@ -17,10 +17,15 @@ internal static class Generator
             matrix[i] = new double[cols];
             for (var j = 0; j < cols; j++)
             {
-                matrix[i][j] = Rand.NextDouble();
+                matrix[i][j] = GenerateDouble(min, max);
             }
         }
 
         return matrix;
+    }
+
+    private static double GenerateDouble(double min, double max)
+    {
+        return Rand.NextDouble() * (max - min) + min;
     }
 }
