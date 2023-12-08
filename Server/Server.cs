@@ -1,4 +1,5 @@
-﻿using System.Net;
+﻿using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using System.Text.Json;
 
@@ -6,7 +7,8 @@ using Server;
 
 using Utility;
 
-var clientsThreads = new List<(Thread Thread, TcpClient Client)>();
+var clientsThreads = new List<(Thread Thread, TcpClient Client, int ClientId)>();
+var stopper = new Stopper();
 
 try
 {
@@ -22,8 +24,8 @@ try
         WriteClientMessage(clientId, "Accepted.");
 
         var currentClientId = clientId;
-        var clientThread = new Thread(() => ProcessClient(client, currentClientId));
-        clientsThreads.Add((clientThread, client));
+        var clientThread = new Thread(() => ProcessClient(client, stopper, currentClientId));
+        clientsThreads.Add((clientThread, client, currentClientId));
 
         clientThread.Start();
         ++clientId;
@@ -35,16 +37,20 @@ catch (Exception ex)
 }
 finally
 {
+    stopper.Stop = true;
+
     clientsThreads.ForEach(t =>
     {
+        WriteClientMessage(t.ClientId, "Stopping thread...");
         t.Thread.Join();
         t.Client.Close();
+        WriteClientMessage(t.ClientId, "Closed.");
     });
 }
 
 return;
 
-static void ProcessClient(TcpClient client, int clientId)
+static void ProcessClient(TcpClient client, Stopper stopper, int clientId)
 {
     try
     {
@@ -69,25 +75,41 @@ static void ProcessClient(TcpClient client, int clientId)
             return;
         }
 
-        WriteClientMessage(clientId, "Received two matrices.");
+        WriteClientMessage(clientId, "Data received.");
+
+        var timer = Stopwatch.StartNew();
 
         WriteClientMessage(clientId, "Computing started.");
         var multiplier = new MatrixMultiplier();
-        responseObject.Result = multiplier.Multiply(requestObject);
-        WriteClientMessage(clientId, "Product computed.");
+        responseObject.Result = multiplier.Multiply(requestObject, stopper);
+
+        timer.Stop();
+
+        WriteClientMessage(clientId, $"Product computed in {timer.Elapsed.TotalSeconds} s.");
 
         SerializeResponseObjectAndSend(writer, responseObject, clientId);
     }
     catch (Exception ex)
     {
-        WriteClientMessage(clientId, $"An error occurred while processing client request: {ex.Message}");
+        WriteClientMessage(clientId, $"An error occurred: {ex.Message}");
     }
+    finally
+    {
+        client.Close();
+        WriteClientMessage(clientId, "Closed.");
+    }
+}
+
+static void WriteClientMessage(int clientId, string message)
+{
+    Console.WriteLine($"Client {clientId}: {message}");
 }
 
 static void WriteErrorAndSend(TextWriter writer, ResponseObject responseObject, string error, int clientId)
 {
-    responseObject.Error = error;
     WriteClientMessage(clientId, error);
+
+    responseObject.Error = error;
     SerializeResponseObjectAndSend(writer, responseObject, clientId);
 }
 
@@ -96,10 +118,6 @@ static void SerializeResponseObjectAndSend(TextWriter writer, ResponseObject res
     var json = JsonSerializer.Serialize(responseObject);
     writer.WriteLine(json);
     writer.Flush();
-    WriteClientMessage(clientId, "Response sent.");
-}
 
-static void WriteClientMessage(int clientId, string message)
-{
-    Console.WriteLine($"Client {clientId}: {message}");
+    WriteClientMessage(clientId, "Response sent.");
 }

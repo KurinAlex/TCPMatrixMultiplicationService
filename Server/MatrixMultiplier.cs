@@ -6,28 +6,19 @@ internal class MatrixMultiplier
 {
     private const int ThreadsCount = 4;
 
+    private readonly object _lockObject = new();
+
     private int _index = -1;
 
-    public double[][] Multiply(MultiplicationData data)
+    public double[][] Multiply(MultiplicationData data, Stopper stopper)
     {
-        _index = -1;
+        data.Deconstruct(out var n, out var m, out var l, out var leftMatrix, out var rightMatrix);
 
-        var threads = new List<Thread>(ThreadsCount);
-        var containers = new List<ThreadContainer>(ThreadsCount);
-
-        for (var i = 0; i < ThreadsCount; i++)
-        {
-            var thread = new Thread(ThreadWork);
-            threads.Add(thread);
-
-            var container = new ThreadContainer(data);
-            containers.Add(container);
-
-            thread.Start(container);
-        }
-
-        var n = data.N;
-        var l = data.L;
+        ThrowIfNotPositive(n, nameof(n));
+        ThrowIfNotPositive(m, nameof(m));
+        ThrowIfNotPositive(l, nameof(l));
+        ThrowIfHasWrongDimensions(leftMatrix, n, m, "Left");
+        ThrowIfHasWrongDimensions(rightMatrix, m, l, "Right");
 
         var resultMatrix = new double[n][];
         for (var i = 0; i < n; i++)
@@ -35,30 +26,31 @@ internal class MatrixMultiplier
             resultMatrix[i] = new double[l];
         }
 
-        for (var i = 0; i < ThreadsCount; i++)
+        var countdownEvent = new CountdownEvent(ThreadsCount);
+
+        for (var i = 0; i < ThreadsCount && !stopper.Stop; i++)
         {
-            threads[i].Join();
-            foreach (var (index, result) in containers[i].Results)
-            {
-                resultMatrix[index / l][index % l] = result;
-            }
+            var container = new ThreadContainer(data, resultMatrix, countdownEvent, stopper);
+            ThreadPool.QueueUserWorkItem(ThreadWork, container);
         }
+
+        countdownEvent.Wait();
 
         return resultMatrix;
     }
 
     private void ThreadWork(object? container)
     {
-        if (container is not ThreadContainer threadContainer)
+        if (container is not ThreadContainer(var multiplicationData, var resultMatrix, var countdownEvent, var stopper))
         {
             return;
         }
 
-        threadContainer.Data.Deconstruct(out var n, out var m, out var l, out var left, out var right);
+        multiplicationData.Deconstruct(out var n, out var m, out var l, out var left, out var right);
 
         var maxIndexValue = n * l;
 
-        while (true)
+        while (!stopper.Stop)
         {
             var currentIndex = Interlocked.Increment(ref _index);
             if (currentIndex >= maxIndexValue)
@@ -70,12 +62,38 @@ internal class MatrixMultiplier
             var j = currentIndex % l;
 
             var sum = 0.0;
-            for (var k = 0; k < m; k++)
+            for (var k = 0; k < m && !stopper.Stop; k++)
             {
                 sum += left[i][k] * right[k][j];
             }
 
-            threadContainer.Results.Add((currentIndex, sum));
+            if (stopper.Stop)
+            {
+                break;
+            }
+
+            lock (_lockObject)
+            {
+                resultMatrix[i][j] = sum;
+            }
+        }
+
+        countdownEvent.Signal();
+    }
+
+    private static void ThrowIfNotPositive(int n, string paramName)
+    {
+        if (n <= 0)
+        {
+            throw new ArgumentOutOfRangeException(paramName, $"{paramName} must be positive integer.");
+        }
+    }
+
+    private static void ThrowIfHasWrongDimensions(double[][] matrix, int rows, int cols, string matrixName)
+    {
+        if (matrix.Length != rows || Array.Exists(matrix, r => r.Length != cols))
+        {
+            throw new ArgumentException($"{matrixName} has wrong dimensions.");
         }
     }
 }
